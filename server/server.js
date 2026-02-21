@@ -3,6 +3,8 @@ import mongoose  from 'mongoose';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { userRoutes } from './routes/user.routes.js';
+import authMiddleware from './middleware/authMiddleware.js';
+import { protectedRoutes } from './routes/protected.routes.js';
 
 
 dotenv.config();
@@ -20,6 +22,7 @@ app.use((err, req, res, next) => {
 //Global Middleware for Routes
 
 userRoutes(app);
+protectedRoutes(app, authMiddleware);
 
 
 
