@@ -1,0 +1,17 @@
+# Node modules
+node_modules
+client/node_modules
+server/node_modules
+
+# Environment files
+.env
+server/.env
+
+# Build
+client/dist
+
+# MongoDB Playground
+*.mongodb.js
+
+# OS
+.DS_Store
