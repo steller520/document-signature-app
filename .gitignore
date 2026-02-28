@@ -35,3 +35,6 @@ client/dist
 
 # OS
 .DS_Store
+
+# uploads
+server/uploads
