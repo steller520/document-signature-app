@@ -6,6 +6,7 @@ import { userRoutes } from './routes/user.routes.js';
 import authMiddleware from './middleware/authMiddleware.js';
 import { protectedRoutes } from './routes/protected.routes.js';
 import { documentRoutes } from './routes/document.routes.js';
+import multer from 'multer';
 
 
 dotenv.config();
@@ -17,16 +18,6 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Universal error handling middleware
-app.use((err, req, res, next) => {
-
-  // Handle Multer file size limit error
-  if(err.code === 'LIMIT_FILE_SIZE') {
-    return res.status(400).json({ message: 'File size exceeds the limit of 5MB' });
-  }
-  console.error(err.stack);
-  res.status(500).send('Something broke!');
-});
 
 
 // Routes
@@ -34,6 +25,35 @@ userRoutes(app);
 protectedRoutes(app, authMiddleware);
 documentRoutes(app, authMiddleware);
 
+// Universal error handling middleware
+app.use((err, req, res, next) => {
+
+  // Catch Multer errors
+  if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(400).json({
+        message: "File size exceeds the limit of 5MB",
+      });
+    }
+    if (err.code === "LIMIT_UNEXPECTED_FILE") {
+      return res.status(400).json({
+        message: "Only one file is allowed per upload",
+      });
+    }
+  }
+
+  // Catch custom file type errors
+  if (err.message === "Only PDF files are allowed") {
+    return res.status(400).json({
+      message: err.message,
+    });
+  }
+
+  console.error(err);
+  res.status(500).json({
+    message: "Server error",
+  });
+});
 
 // Test route
 app.get('/', (req, res) => {
