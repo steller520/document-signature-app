@@ -7,6 +7,7 @@ import authMiddleware from './middleware/authMiddleware.js';
 import { protectedRoutes } from './routes/protected.routes.js';
 import { documentRoutes } from './routes/document.routes.js';
 import multer from 'multer';
+import { signatureRoutes } from './routes/signature.routes.js';
 
 
 dotenv.config();
@@ -24,6 +25,7 @@ app.use(express.json());
 userRoutes(app);
 protectedRoutes(app, authMiddleware);
 documentRoutes(app, authMiddleware);
+signatureRoutes(app, authMiddleware);
 
 // Universal error handling middleware
 app.use((err, req, res, next) => {

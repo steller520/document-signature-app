@@ -5,7 +5,7 @@ const DocumentSchema = new mongoose.Schema({
     type: String, 
     required: true
   },
-  filepath: {
+  filePath: {
     type: String, 
     required: true
   },
@@ -16,7 +16,7 @@ const DocumentSchema = new mongoose.Schema({
   },
   status:{
     type: String,
-    enum: ['pending', 'approved', 'rejected'],
+    enum: ['pending', 'approved', 'rejected', 'signed'],
     default: 'pending'
   },
 }, { timestamps: true });
