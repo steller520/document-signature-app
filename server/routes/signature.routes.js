@@ -2,6 +2,8 @@ import Document from "../models/Document.model.js";
 import Signature from "../models/Signature.model.js";
 import fs from "fs";
 import { PDFDocument, rgb } from "pdf-lib";
+import Audit from "../models/Audit.model.js";
+import { auditLogger } from "../utils/auditLogger.js";
 
 export function signatureRoutes(app, authMiddleware) {
   // Save signature position
@@ -36,6 +38,9 @@ export function signatureRoutes(app, authMiddleware) {
       });
 
       await newSignature.save();
+
+      // Create an audit record
+      auditLogger("add_signature", req.user, documentId, req);
 
       res.status(201).json(newSignature);
     } catch (error) {
@@ -77,15 +82,8 @@ export function signatureRoutes(app, authMiddleware) {
       record.status = "signed";
       await record.save();
 
-      // Check if all signatures are signed
-      const allSignatures = await Signature.find({ document: documentId });
-      const allSigned = allSignatures.every((sig) => sig.status === "signed");
-
-      if (allSigned) {
-        const document = await Document.findById(documentId);
-        document.status = "signed";
-        await document.save();
-      }
+      // Create an audit record
+        auditLogger("sign_document", req.user, documentId, req);
 
       res.status(200).json(record);
     } catch (error) {
@@ -160,6 +158,8 @@ export function signatureRoutes(app, authMiddleware) {
         document.filePath = outputPath;
 
         await document.save();
+
+        auditLogger("finalize_document", req.user, documentId, req);
 
         res.status(200).json({
           message: "Document finalized and signed PDF generated",

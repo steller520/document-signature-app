@@ -17,9 +17,11 @@ export function documentRoutes(app, authMiddleware) {
         const document = new Document({
           uploadedBy: req.user,
           title: req.file.originalname,
-          filepath: req.file.path,
+          filePath: req.file.path ,
         });
+
         await document.save();
+        
         res.status(201).json(document);
       } catch (error) {
         next(error);
