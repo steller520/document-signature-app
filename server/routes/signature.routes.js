@@ -83,7 +83,7 @@ export function signatureRoutes(app, authMiddleware) {
       await record.save();
 
       // Create an audit record
-        auditLogger("sign_document", req.user, documentId, req);
+      auditLogger("sign_document", req.user, documentId, req);
 
       res.status(200).json(record);
     } catch (error) {
@@ -133,7 +133,6 @@ export function signatureRoutes(app, authMiddleware) {
         const pdfBytes = fs.readFileSync(document.filePath);
         const pdfDoc = await PDFDocument.load(pdfBytes);
 
-
         const pages = pdfDoc.getPages();
 
         for (const sig of signatures) {
@@ -170,4 +169,55 @@ export function signatureRoutes(app, authMiddleware) {
       }
     },
   );
+
+  app.post("/api/signatures/invite", authMiddleware, async (req, res, next) => {
+    try {
+      const { documentId, email, coordinates, page } = req.body;
+
+      const document = await Document.findById(documentId);
+
+      if (!document) {
+        return res.status(404).json({ message: "Document not found" });
+      }
+
+      if (document.uploadedBy.toString() !== req.user.toString()) {
+        return res.status(403).json({
+          message: "Only the document owner can invite signers",
+        });
+      }
+
+      const existingInvite = await Signature.findOne({
+        document: documentId,
+        email,
+      });
+
+
+      if (existingInvite) {
+        return res
+          .status(400)
+          .json({ message: "This email is already invited to sign" });
+      }
+
+      const record = await Signature.create({
+        document: documentId,
+        email,
+        coordinates,
+        page,
+        status: "pending",
+      });
+
+      auditLogger("invite_signature", req.user, documentId, req);
+
+      const signatureLink = `${process.env.FRONTEND_URL}/sign/${record._id}`;
+      res.status(201).json({
+        message: `Signature invitation sent to ${email}`,
+        link: signatureLink,
+        record,
+      });
+
+
+    } catch (error) {
+      next(error);
+    }
+  });
 }

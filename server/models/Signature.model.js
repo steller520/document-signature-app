@@ -7,6 +7,10 @@ const signatureSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
+    email: {
+      type: String,
+      required: true,
+    },
     document: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Document",
