@@ -31,6 +31,7 @@ export function signatureRoutes(app, authMiddleware) {
       const newSignature = new Signature({
         signedBy: req.user,
         document: documentId,
+        email: req.user.email,
         signature,
         coordinates,
         page,
@@ -40,7 +41,7 @@ export function signatureRoutes(app, authMiddleware) {
       await newSignature.save();
 
       // Create an audit record
-      auditLogger("add_signature", req.user, documentId, req);
+      auditLogger("create_signature", req.user, documentId, req);
 
       res.status(201).json(newSignature);
     } catch (error) {
@@ -191,7 +192,6 @@ export function signatureRoutes(app, authMiddleware) {
         email,
       });
 
-
       if (existingInvite) {
         return res
           .status(400)
@@ -214,10 +214,30 @@ export function signatureRoutes(app, authMiddleware) {
         link: signatureLink,
         record,
       });
-
-
     } catch (error) {
       next(error);
     }
+  });
+
+//   public signing not authhenticated signing using the link sent to email
+  app.post("/api/signatures/public-sign/:id", async (req, res) => {
+    const { signature } = req.body;
+
+    const record = await Signature.findById(req.params.id);
+
+    if (!record) {
+      return res.status(404).json({ message: "Invitation not found" });
+    }
+
+    if (record.status === "signed") {
+      return res.status(400).json({ message: "Already signed" });
+    }
+
+    record.signature = signature;
+    record.status = "signed";
+
+    await record.save();
+
+    res.json({ message: "Document signed successfully" });
   });
 }

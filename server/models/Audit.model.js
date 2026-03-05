@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 
 const auditSchema = new mongoose.Schema(
   {
-    action: { type: String, required: true,enum: ['create_signature', 'sign_document', 'finalize_document'] },
+    action: { type: String, required: true,enum: ['create_signature', 'sign_document', 'finalize_document','invite_signature'] },
     user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     document: { type: mongoose.Schema.Types.ObjectId, ref: "Document", required: true },
     ipAddress: { type: String },

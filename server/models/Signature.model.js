@@ -5,11 +5,9 @@ const signatureSchema = new mongoose.Schema(
     signedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
     },
     email: {
       type: String,
-      required: true,
     },
     document: {
       type: mongoose.Schema.Types.ObjectId,
@@ -18,7 +16,6 @@ const signatureSchema = new mongoose.Schema(
     },
     signature: {
       type: String,
-      required: true,
     },
     coordinates: {
         x: {

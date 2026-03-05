@@ -1,4 +1,4 @@
-import Audit from "../models/Audit.model";
+import Audit from "../models/Audit.model.js";
 
 export async function auditLogger(action, user, documentId, req) {
         await Audit.create({
