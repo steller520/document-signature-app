@@ -3,6 +3,8 @@ import './index.css'
 import App from './App.jsx'
 import { createBrowserRouter } from 'react-router-dom'
 import { RouterProvider } from 'react-router'
+import Dashboard from './pages/Dashboard.jsx'
+import Home from './pages/Home.jsx'
 
 const router = createBrowserRouter([
   {
@@ -10,8 +12,13 @@ const router = createBrowserRouter([
     element: <App />,
     children: [
       {
+        path: "/",
+        element: <Home />
+      },
+      {
+
         path: "/dashboard",
-        element: null
+        element: <Dashboard />
       }
     ]
   },
