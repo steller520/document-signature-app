@@ -1,23 +1,31 @@
 import { useEffect, useState } from "react";
 import API from "../api/axios";
 import "./Dashboard.css";
+import { Navigate, NavLink } from "react-router-dom";
 
 function Dashboard() {
+
+    if (!localStorage.getItem("token")) {
+        return <Navigate to="/login" />;
+    }
     // State to hold documents
     const [documents, setDocuments] = useState([]);
+    const [selectedFile, setSelectedFile] = useState(null);
+    const [uploading, setUploading] = useState(false);
+
+    const fetchDocuments = async () => {
+        try {
+            const { data } = await API.get("/docs");
+            setDocuments(data);
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
 
     // Fetch documents on component mount
     useEffect(() => {
-        const fetchDocs = async () => {
-            try {
-                const { data } = await API.get("/docs");
-                setDocuments(data);
-            } catch (error) {
-                console.error(error);
-            }
-        };
-
-        fetchDocs();
+        fetchDocuments();
     }, []);
 
     // Helper function to get status badge color
@@ -30,25 +38,50 @@ function Dashboard() {
         return statusColors[status] || "bg-gray-100 text-gray-800 border-gray-300";
     };
 
+    // Handle file selection
+    const handleFileSelect = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (file.type !== "application/pdf") {
+            alert("Please select a PDF file.");
+            return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+            alert("File size exceeds 5MB limit.");
+            return;
+        }
+        setSelectedFile(file);
+    };
+
     // Handle file upload
-    const handleUpload = async (e) => {
-    const file = e.target.files[0];
+    const handleUpload = async () => {
+        if (!selectedFile) return;
 
-    if (!file) return;
+        const formData = new FormData();
+        formData.append("document", selectedFile);
 
-    const formData = new FormData();
-    formData.append("document", file);
+        try {
+            setUploading(true);
+            const { data } = await API.post("/docs/upload", formData);
 
-    try {
-        const { data } = await API.post("/docs/upload", formData);
+            // Add new document to dashboard immediately
+            setDocuments((prev) => [data, ...prev]);
+            setSelectedFile(null);
+            alert("Document uploaded successfully!");
+            console.log("Uploaded Successfully:", data);
 
-        // Add new document to dashboard immediately
-        setDocuments((prev) => [data, ...prev]);
+        } catch (error) {
+            console.error(error);
+            alert("Failed to upload document. Please try again.");
+        } finally {
+            setUploading(false);
+        }
+    };
 
-    } catch (error) {
-        console.error(error);
-    }
-};
+    // Clear selected file
+    const handleClearSelection = () => {
+        setSelectedFile(null);
+    };
 
     return (
         <div className="min-h-screen bg-linear-to-br from-blue-50 to-indigo-100 p-8">
@@ -63,17 +96,72 @@ function Dashboard() {
                     </p>
                 </div>
 
-                {/* Upload Button */}
-                <div className="mb-8">
-                    <label className="cursor-pointer px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-lg transition-all duration-200">
-                        + Upload Document
-                        <input
-                            type="file"
-                            accept="application/pdf"
-                            className="hidden"
-                            onChange={handleUpload}
-                        />
-                    </label>
+                {/* Upload Section */}
+                <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-8 mb-12">
+                    <h2 className="text-2xl font-bold text-gray-900 mb-6">Upload Documents</h2>
+
+                    {!selectedFile ? (
+                        <div className="flex items-center justify-center">
+                            <label className="w-full cursor-pointer">
+                                <div className="border-2 border-dashed border-blue-400 rounded-lg p-12 text-center hover:bg-blue-50 transition-colors duration-200">
+                                    <div className="text-4xl mb-4">📄</div>
+                                    <p className="text-lg font-semibold text-gray-800 mb-2">
+                                        Click to upload or drag and drop
+                                    </p>
+                                    <p className="text-gray-600">
+                                        PDF files only (Max 5MB)
+                                    </p>
+                                </div>
+                                <input
+                                    type="file"
+                                    accept="application/pdf"
+                                    className="hidden"
+                                    onChange={handleFileSelect}
+                                />
+                            </label>
+                        </div>
+                    ) : (
+                        <div className="space-y-6">
+                            {/* File Preview Card */}
+                            <div className="bg-linear-to-r from-blue-50 to-indigo-50 rounded-lg p-6 border border-blue-200">
+                                <div className="flex items-start justify-between">
+                                    <div className="flex items-start gap-4">
+                                        <div className="text-4xl">📄</div>
+                                        <div>
+                                            <h3 className="text-lg font-bold text-gray-900 wrap-break-word">
+                                                {selectedFile.name}
+                                            </h3>
+                                            <p className="text-sm text-gray-600 mt-1">
+                                                Size: {(selectedFile.size / 1024).toFixed(2)} KB
+                                            </p>
+                                            <p className="text-sm text-gray-600">
+                                                Type: {selectedFile.type || "PDF"}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="text-green-600 text-2xl">✓</div>
+                                </div>
+                            </div>
+
+                            {/* Action Buttons */}
+                            <div className="flex gap-4">
+                                <button
+                                    onClick={handleUpload}
+                                    disabled={uploading}
+                                    className="flex-1 px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-semibold rounded-lg shadow-lg transition-all duration-200 transform hover:scale-105"
+                                >
+                                    {uploading ? "Uploading..." : "✓ Confirm Upload"}
+                                </button>
+                                <button
+                                    onClick={handleClearSelection}
+                                    disabled={uploading}
+                                    className="flex-1 px-6 py-3 bg-gray-300 hover:bg-gray-400 disabled:bg-gray-400 text-gray-800 font-semibold rounded-lg transition-all duration-200"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* Documents Grid */}
@@ -125,9 +213,11 @@ function Dashboard() {
                                     </div>
 
                                     {/* Action Button */}
-                                    <button className="w-full mt-4 px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold rounded-lg transition-colors duration-200 border border-blue-200">
-                                        View Details
-                                    </button>
+                                    <NavLink to={`/docs/${doc._id}`}>
+                                        <button className="w-full mt-4 px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold rounded-lg border border-blue-200">
+                                            View Details
+                                        </button>
+                                    </NavLink>
                                 </div>
                             </div>
                         ))
