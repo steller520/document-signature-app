@@ -6,7 +6,11 @@ const DocumentSchema = new mongoose.Schema({
     type: String, 
     required: true
   },
-
+  publicDocToken: {
+    type: String,
+    unique: true,
+    default: () => crypto.randomBytes(16).toString("hex"),
+  },
   filePath: {
     type: String, 
     required: true

@@ -339,10 +339,10 @@ export function signatureRoutes(app, authMiddleware) {
   });
 
 //   public signing not authhenticated signing using the link sent to email
-  app.post("/api/signatures/public-sign/:id", async (req, res) => {
+  app.post("/api/signatures/public-sign/:token", async (req, res) => {
     const { signature } = req.body;
 
-    const record = await Signature.findById(req.params.id);
+    const record = await Signature.findOne({ publicSignerToken: req.params.token });
 
     if (!record) {
       return res.status(404).json({ message: "Invitation not found" });

@@ -1,10 +1,18 @@
 import mongoose from "mongoose";
+import crypto from "crypto";
+
 
 const signatureSchema = new mongoose.Schema(
   {
     signedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
+    },
+    publicSignerToken: {
+      type: String,
+      unique: true,
+      index: true,
+      default: () =>  crypto.randomBytes(24).toString("hex"),
     },
     email: {
       type: String,
@@ -40,43 +48,48 @@ const signatureSchema = new mongoose.Schema(
       },
     },
     coordinates: {
-        x: {
-            type: Number,
-            required: true,
-            min: 0,
-            max: 1,
-        },
-        y: {
-            type: Number,
-            required: true,
-            min: 0,
-            max: 1,
-        },
-        width: {
-            type: Number,
-            required: true,
-            min: 0,
-            max: 1,
-        },
-        height: {
-            type: Number,
-            required: true,
-            min: 0,
-            max: 1,
-        },
-    },
-    page: {
+      x: {
         type: Number,
         required: true,
-        default: 1,
+        min: 0,
+        max: 1,
+      },
+      y: {
+        type: Number,
+        required: true,
+        min: 0,
+        max: 1,
+      },
+      width: {
+        type: Number,
+        required: true,
+        min: 0,
+        max: 1,
+      },
+      height: {
+        type: Number,
+        required: true,
+        min: 0,
+        max: 1,
+      },
+    },
+    page: {
+      type: Number,
+      required: true,
+      default: 1,
     },
     status: {
-        type: String,
-        enum: ['pending', 'signed', 'rejected'],
-        default: 'pending',
+      type: String,
+      enum: ["pending", "signed", "rejected"],
+      default: "pending",
+    },
+
+    expiresAt: {
+      type: Date,
+      default: () => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from creation
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 // Ensure a user can only sign a document once (for authenticated signers).
@@ -100,6 +113,17 @@ signatureSchema.index(
     },
   },
 );
+
+// Automatically set signedAt when status changes to "signed"
+signatureSchema.pre("save", function (next) {
+  if (this.status === "signed" && !this.signatureDetails?.signedAt) {
+    this.signatureDetails = {
+      ...(this.signatureDetails || {}),
+      signedAt: new Date(),
+    };
+  }
+  next();
+});
 
 const Signature = mongoose.model("Signature", signatureSchema);
 
