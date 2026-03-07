@@ -24,6 +24,10 @@ const router = createBrowserRouter([
         element: <ProtectedRoute><Dashboard /></ProtectedRoute>
       },
       {
+        path: "/docs/:id",
+        element: <ProtectedRoute><DocumentViewer /></ProtectedRoute>
+      },
+      {
         path: "/login",
         element: <Login />
       },

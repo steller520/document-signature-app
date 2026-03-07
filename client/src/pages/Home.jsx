@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 
 function Home() {
   return (
-    <div className="home min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+    <div className="home min-h-screen bg-linear-to-br from-blue-50 via-indigo-50 to-purple-50">
       <div className="max-w-6xl mx-auto px-4 py-20">
         {/* Hero Section */}
         <div className="text-center mb-16">

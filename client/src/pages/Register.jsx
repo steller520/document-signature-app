@@ -35,7 +35,7 @@ function Register() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-blue-50 to-indigo-100">
 
       <div className="bg-white p-10 rounded-xl shadow-lg w-full max-w-md">
 
