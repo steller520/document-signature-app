@@ -8,6 +8,7 @@ function Dashboard() {
     const [documents, setDocuments] = useState([]);
     const [selectedFile, setSelectedFile] = useState(null);
     const [uploading, setUploading] = useState(false);
+    const [filterStatus, setFilterStatus] = useState("all");
 
     const fetchDocuments = async () => {
         try {
@@ -23,6 +24,16 @@ function Dashboard() {
     useEffect(() => {
         fetchDocuments();
     }, []);
+
+    const totalDocs = documents.length;
+    const pendingDocs = documents.filter(d => d.status === "pending").length;
+    const signedDocs = documents.filter(d => d.status === "signed").length;
+    const rejectedDocs = documents.filter(d => d.status === "rejected").length;
+
+    // Filter documents based on selected status
+    const filteredDocuments = filterStatus === "all" 
+        ? documents 
+        : documents.filter(d => d.status === filterStatus);
 
     // Helper function to get status badge color
     const getStatusColor = (status) => {
@@ -160,10 +171,83 @@ function Dashboard() {
                     )}
                 </div>
 
+                {/* Stats & Filter Bar */}
+                <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6 mb-12">
+                    <div className="flex flex-wrap items-center gap-6 mb-6">
+                        <div className="flex gap-8">
+                            <div className="flex items-center gap-2">
+                                <span className="text-2xl">📄</span>
+                                <p className="text-lg font-semibold text-gray-900">Total: <span className="text-blue-600">{totalDocs}</span></p>
+                            </div>
+                            <div className="flex items-center gap-2 cursor-pointer hover:text-yellow-600" onClick={() => setFilterStatus("pending")}>
+                                <span className="text-2xl">⏳</span>
+                                <p className="text-lg font-semibold text-gray-900">Pending: <span className="text-yellow-600">{pendingDocs}</span></p>
+                            </div>
+                            <div className="flex items-center gap-2 cursor-pointer hover:text-green-600" onClick={() => setFilterStatus("signed")}>
+                                <span className="text-2xl">✓</span>
+                                <p className="text-lg font-semibold text-gray-900">Signed: <span className="text-green-600">{signedDocs}</span></p>
+                            </div>
+                            <div className="flex items-center gap-2 cursor-pointer hover:text-red-600" onClick={() => setFilterStatus("rejected")}>
+                                <span className="text-2xl">✕</span>
+                                <p className="text-lg font-semibold text-gray-900">Rejected: <span className="text-red-600">{rejectedDocs}</span></p>
+                            </div>
+                        </div>
+                        <button
+                            onClick={fetchDocuments}
+                            className="ml-auto px-3 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold rounded transition-all"
+                        >
+                            🔄
+                        </button>
+                    </div>
+
+                    <div className="flex gap-2 flex-wrap">
+                        <button
+                            onClick={() => setFilterStatus("all")}
+                            className={`px-3 py-1 text-sm rounded font-semibold transition-all ${
+                                filterStatus === "all"
+                                    ? "bg-blue-600 text-white"
+                                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                            }`}
+                        >
+                            All
+                        </button>
+                        <button
+                            onClick={() => setFilterStatus("pending")}
+                            className={`px-3 py-1 text-sm rounded font-semibold transition-all ${
+                                filterStatus === "pending"
+                                    ? "bg-yellow-500 text-white"
+                                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                            }`}
+                        >
+                            Pending
+                        </button>
+                        <button
+                            onClick={() => setFilterStatus("signed")}
+                            className={`px-3 py-1 text-sm rounded font-semibold transition-all ${
+                                filterStatus === "signed"
+                                    ? "bg-green-600 text-white"
+                                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                            }`}
+                        >
+                            Signed
+                        </button>
+                        <button
+                            onClick={() => setFilterStatus("rejected")}
+                            className={`px-3 py-1 text-sm rounded font-semibold transition-all ${
+                                filterStatus === "rejected"
+                                    ? "bg-red-600 text-white"
+                                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                            }`}
+                        >
+                            Rejected
+                        </button>
+                    </div>
+                </div>
+
                 {/* Documents Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {documents.length > 0 ? (
-                        documents.map((doc) => (
+                    {filteredDocuments.length > 0 ? (
+                        filteredDocuments.map((doc) => (
                             <div
                                 key={doc._id}
                                 className="bg-white rounded-lg shadow-md hover:shadow-xl transition-shadow duration-300 overflow-hidden border border-gray-200 hover:border-blue-300"
@@ -220,10 +304,14 @@ function Dashboard() {
                     ) : (
                         <div className="col-span-full flex flex-col items-center justify-center py-16">
                             <p className="text-xl text-gray-600 mb-4">
-                                No documents yet
+                                {filterStatus === "all" 
+                                    ? "No documents yet" 
+                                    : `No ${filterStatus} documents`}
                             </p>
                             <p className="text-gray-500">
-                                Upload your first document to get started
+                                {filterStatus === "all"
+                                    ? "Upload your first document to get started"
+                                    : `Try a different filter or upload a new document`}
                             </p>
                         </div>
                     )}

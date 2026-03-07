@@ -58,6 +58,7 @@ function Login() {
             type="password"
             placeholder="Password"
             className="w-full border p-3 rounded-lg"
+            autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
