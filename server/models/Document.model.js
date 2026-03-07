@@ -1,10 +1,12 @@
 import mongoose from 'mongoose';
+import crypto from 'crypto';
 
 const DocumentSchema = new mongoose.Schema({
   title: {
     type: String, 
     required: true
   },
+
   filePath: {
     type: String, 
     required: true

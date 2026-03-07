@@ -9,16 +9,34 @@ import { documentRoutes } from './routes/document.routes.js';
 import multer from 'multer';
 import { signatureRoutes } from './routes/signature.routes.js';
 import { auditRoutes } from './routes/audit.routes.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 
 dotenv.config();
 
 const app = express();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const uploadsDir = path.resolve(__dirname, 'uploads');
 
 // Middleware
 // CORS and JSON parsing
 app.use(cors());
 app.use(express.json());
+
+// Serve uploaded files; force inline PDF display in browser viewers.
+app.use(
+  "/uploads",
+  express.static(uploadsDir, {
+    setHeaders: (res, filePath) => {
+      if (path.extname(filePath).toLowerCase() === ".pdf") {
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", "inline");
+      }
+    },
+  }),
+);
 
 
 

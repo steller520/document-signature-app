@@ -1,15 +1,17 @@
 import Document from "../models/Document.model.js";
 import Signature from "../models/Signature.model.js";
 import fs from "fs";
+import path from "path";
 import { PDFDocument, rgb } from "pdf-lib";
 import Audit from "../models/Audit.model.js";
 import { auditLogger } from "../utils/auditLogger.js";
+import sendEmail from "../utils/sendMail.js";
 
 export function signatureRoutes(app, authMiddleware) {
   // Save signature position
   app.post("/api/signatures", authMiddleware, async (req, res, next) => {
     try {
-      const { documentId, signature, coordinates, page } = req.body;
+      const { documentId, signature, signatureDetails, coordinates, page } = req.body;
 
       const document = await Document.findById(documentId);
 
@@ -31,8 +33,9 @@ export function signatureRoutes(app, authMiddleware) {
       const newSignature = new Signature({
         signedBy: req.user,
         document: documentId,
-        email: req.user.email,
+        email: null,
         signature,
+        signatureDetails,
         coordinates,
         page,
         status: "pending",
@@ -69,7 +72,7 @@ export function signatureRoutes(app, authMiddleware) {
   //   upload the signature and status of the signature (signed, pending, rejected) to the document and update the document status if all signatures are signed
   app.post("/api/signatures/sign", authMiddleware, async (req, res, next) => {
     try {
-      const { documentId, signature } = req.body;
+      const { documentId, signature, signatureDetails } = req.body;
 
       const record = await Signature.findOne({
         document: documentId,
@@ -80,6 +83,10 @@ export function signatureRoutes(app, authMiddleware) {
       }
 
       record.signature = signature;
+      record.signatureDetails = {
+        ...(record.signatureDetails || {}),
+        ...(signatureDetails || {}),
+      };
       record.status = "signed";
       await record.save();
 
@@ -131,7 +138,20 @@ export function signatureRoutes(app, authMiddleware) {
 
         const signatures = await Signature.find({ document: documentId });
 
-        const pdfBytes = fs.readFileSync(document.filePath);
+        const normalizedPath = String(document.filePath || "").replace(/\\/g, "/");
+        const docPathCandidates = path.isAbsolute(normalizedPath)
+          ? [normalizedPath]
+          : [
+              path.resolve(process.cwd(), normalizedPath),
+              path.resolve(process.cwd(), "server", normalizedPath),
+            ];
+        const sourcePath = docPathCandidates.find((candidate) => fs.existsSync(candidate));
+
+        if (!sourcePath) {
+          return res.status(404).json({ message: "Document file not found" });
+        }
+
+        const pdfBytes = fs.readFileSync(sourcePath);
         const pdfDoc = await PDFDocument.load(pdfBytes);
 
         const pages = pdfDoc.getPages();
@@ -140,7 +160,9 @@ export function signatureRoutes(app, authMiddleware) {
           const page = pages[sig.page - 1];
           if (!page) continue; // Skip if page number is invalid
 
-          page.drawText(sig.signature, {
+          const signedText = sig.signature || sig.signatureDetails?.signerName || "Signed";
+
+          page.drawText(signedText, {
             x: sig.coordinates.x,
             y: sig.coordinates.y,
             size: 24,
@@ -173,7 +195,7 @@ export function signatureRoutes(app, authMiddleware) {
 
   app.post("/api/signatures/invite", authMiddleware, async (req, res, next) => {
     try {
-      const { documentId, email, coordinates, page } = req.body;
+      const { documentId, email, coordinates, page, signatureDetails } = req.body;
 
       const document = await Document.findById(documentId);
 
@@ -203,16 +225,113 @@ export function signatureRoutes(app, authMiddleware) {
         email,
         coordinates,
         page,
+        signatureDetails,
         status: "pending",
       });
 
       auditLogger("invite_signature", req.user, documentId, req);
 
       const signatureLink = `${process.env.FRONTEND_URL}/sign/${record._id}`;
+      
+      // Send invitation email
+      try {
+        await sendEmail(
+          email,
+          "Document Signature Request",
+          `You have been invited to sign a document.\n\nDocument: ${document.title || 'Untitled Document'}\n\nPlease click the link below to review and sign:\n${signatureLink}\n\nThank you.`
+        );
+      } catch (emailError) {
+        console.error("Failed to send invitation email:", emailError);
+        // Continue even if email fails
+      }
+      
       res.status(201).json({
         message: `Signature invitation sent to ${email}`,
         link: signatureLink,
         record,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Invite multiple signers at once
+  app.post("/api/signatures/invite-batch", authMiddleware, async (req, res, next) => {
+    try {
+      const { documentId, invitees, coordinates, page } = req.body;
+
+      const document = await Document.findById(documentId);
+
+      if (!document) {
+        return res.status(404).json({ message: "Document not found" });
+      }
+
+      if (document.uploadedBy.toString() !== req.user.toString()) {
+        return res.status(403).json({
+          message: "Only the document owner can invite signers",
+        });
+      }
+
+      if (!Array.isArray(invitees) || invitees.length === 0) {
+        return res.status(400).json({ message: "At least one invitee is required" });
+      }
+
+      const created = [];
+      const skipped = [];
+
+      for (const invitee of invitees) {
+        const email = String(invitee?.email || "").trim().toLowerCase();
+
+        if (!email) {
+          skipped.push({ email: "", reason: "Email is required" });
+          continue;
+        }
+
+        const existingInvite = await Signature.findOne({
+          document: documentId,
+          email,
+        });
+
+        if (existingInvite) {
+          skipped.push({ email, reason: "Already invited" });
+          continue;
+        }
+
+        const record = await Signature.create({
+          document: documentId,
+          email,
+          coordinates,
+          page,
+          signatureDetails: {
+            signerName: invitee?.signerName,
+            signerTitle: invitee?.signerTitle,
+            reason: invitee?.reason,
+          },
+          status: "pending",
+        });
+
+        // Send invitation email
+        try {
+          const signatureLink = `${process.env.FRONTEND_URL}/sign/${record._id}`;
+          await sendEmail(
+            email,
+            "Document Signature Request",
+            `You have been invited to sign a document.\n\nDocument: ${document.title || 'Untitled Document'}\n\nPlease click the link below to review and sign:\n${signatureLink}\n\nThank you.`
+          );
+        } catch (emailError) {
+          console.error(`Failed to send invitation email to ${email}:`, emailError);
+          // Continue even if email fails
+        }
+
+        created.push(record);
+      }
+
+      auditLogger("invite_signature", req.user, documentId, req);
+
+      return res.status(201).json({
+        message: "Invitees processed",
+        created,
+        skipped,
       });
     } catch (error) {
       next(error);
