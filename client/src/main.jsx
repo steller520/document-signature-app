@@ -5,6 +5,9 @@ import { createBrowserRouter } from 'react-router-dom'
 import { RouterProvider } from 'react-router'
 import Dashboard from './pages/Dashboard.jsx'
 import Home from './pages/Home.jsx'
+import Login from './pages/Login.jsx'
+import Register from './pages/Register.jsx'
+import ProtectedRoute from './components/ProtectedRoute.jsx'
 
 const router = createBrowserRouter([
   {
@@ -18,14 +21,22 @@ const router = createBrowserRouter([
       {
 
         path: "/dashboard",
-        element: <Dashboard />
+        element: <ProtectedRoute><Dashboard /></ProtectedRoute>
+      },
+      {
+        path: "/login",
+        element: <Login />
+      },
+      {
+        path: "/register",
+        element: <Register />
       }
     ]
   },
 ])
 
 createRoot(document.getElementById('root')).render(
-  
-    < RouterProvider router={router} />
-  
+
+  < RouterProvider router={router} />
+
 )

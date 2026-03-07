@@ -1,13 +1,9 @@
 import { useEffect, useState } from "react";
 import API from "../api/axios";
-import "./Dashboard.css";
 import { Navigate, NavLink } from "react-router-dom";
 
 function Dashboard() {
 
-    if (!localStorage.getItem("token")) {
-        return <Navigate to="/login" />;
-    }
     // State to hold documents
     const [documents, setDocuments] = useState([]);
     const [selectedFile, setSelectedFile] = useState(null);
