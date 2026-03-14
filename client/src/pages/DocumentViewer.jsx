@@ -4,7 +4,7 @@ import { pdfjs } from "react-pdf";
 import API from "../api/axios";
 import "react-pdf/dist/Page/TextLayer.css";
 import "react-pdf/dist/Page/AnnotationLayer.css";
-import PDFCanvas from "../components/PDFCanvas";
+import PdfCanvas from "../components/PdfCanvas";
 import SignatureSidebar from "../components/SignatureSidebar";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
@@ -414,7 +414,7 @@ function DocumentViewer() {
         : "border-blue-200 bg-blue-50 text-blue-700";
 
   return (
-    <div className="mx-auto w-full max-w-[1500px] p-4 md:p-8">
+    <div className="mx-auto w-full max-w-375 p-4 md:p-8">
       <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -472,7 +472,7 @@ function DocumentViewer() {
 
       <div className={`grid gap-6 ${isDialogOpen && pendingPlacement ? "xl:grid-cols-[minmax(0,1fr)_380px]" : "xl:grid-cols-1"}`}>
         <div className={`min-h-[65vh] ${isDialogOpen && pendingPlacement ? "" : "col-span-full"}`}>
-          <PDFCanvas
+          <PdfCanvas
             pdfUrl={pdfUrl}
             numPages={numPages}
             signatures={signatures}
