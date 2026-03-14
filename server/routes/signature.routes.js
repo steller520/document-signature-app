@@ -1,11 +1,116 @@
 import Document from "../models/Document.model.js";
 import Signature from "../models/Signature.model.js";
 import fs from "fs";
+import mongoose from "mongoose";
 import path from "path";
-import { PDFDocument, rgb } from "pdf-lib";
+import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import Audit from "../models/Audit.model.js";
 import { auditLogger } from "../utils/auditLogger.js";
 import sendEmail from "../utils/sendMail.js";
+
+const DEFAULT_SIGNATURE_WIDTH = 0.2;
+const DEFAULT_SIGNATURE_HEIGHT = 0.08;
+const SIGNATURE_STACK_GAP = 0.015;
+
+function buildPublicSignatureLink(token) {
+  return `${process.env.FRONTEND_URL}/signatures/public-sign/${token}`;
+}
+
+function resolveStoredFilePath(filePath) {
+  const normalizedPath = String(filePath || "").replace(/\\/g, "/");
+  const candidatePaths = path.isAbsolute(normalizedPath)
+    ? [normalizedPath]
+    : [
+        path.resolve(process.cwd(), normalizedPath),
+        path.resolve(process.cwd(), "server", normalizedPath),
+      ];
+
+  return candidatePaths.find((candidate) => fs.existsSync(candidate));
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function getSignatureClusterKey(signature) {
+  return [
+    signature.page,
+    Number(signature.coordinates?.x || 0).toFixed(4),
+    Number(signature.coordinates?.y || 0).toFixed(4),
+  ].join(":");
+}
+
+function getSignaturePlacement(signature, stackIndex, page) {
+  const widthNormalized = clamp(
+    Number(signature.coordinates?.width || DEFAULT_SIGNATURE_WIDTH),
+    0.08,
+    0.6,
+  );
+  const heightNormalized = clamp(
+    Number(signature.coordinates?.height || DEFAULT_SIGNATURE_HEIGHT),
+    0.04,
+    0.2,
+  );
+  const minCenterX = widthNormalized / 2;
+  const maxCenterX = 1 - widthNormalized / 2;
+  const minCenterY = heightNormalized / 2;
+  const maxCenterY = 1 - heightNormalized / 2;
+  const centerXNormalized = clamp(
+    Number(signature.coordinates?.x || 0),
+    minCenterX,
+    maxCenterX,
+  );
+  const baseCenterYNormalized = clamp(
+    Number(signature.coordinates?.y || 0),
+    minCenterY,
+    maxCenterY,
+  );
+  const stackStep = heightNormalized + SIGNATURE_STACK_GAP;
+  const canStackDown =
+    baseCenterYNormalized + stackIndex * stackStep <= maxCenterY;
+  const canStackUp =
+    baseCenterYNormalized - stackIndex * stackStep >= minCenterY;
+  const stackDirection = canStackDown ? 1 : canStackUp ? -1 : baseCenterYNormalized > 0.5 ? -1 : 1;
+  const centerYNormalized = clamp(
+    baseCenterYNormalized + stackIndex * stackStep * stackDirection,
+    minCenterY,
+    maxCenterY,
+  );
+  const pageWidth = page.getWidth();
+  const pageHeight = page.getHeight();
+  const boxWidth = widthNormalized * pageWidth;
+  const boxHeight = heightNormalized * pageHeight;
+  const centerX = centerXNormalized * pageWidth;
+  const boxBottom = pageHeight - centerYNormalized * pageHeight - boxHeight / 2;
+
+  return {
+    boxBottom,
+    boxHeight,
+    centerX,
+  };
+}
+
+async function findSignatureInvite(identifier, populate) {
+  let query = Signature.findOne({ publicSignerToken: identifier });
+
+  if (populate) {
+    query = query.populate(populate);
+  }
+
+  let record = await query;
+
+  if (!record && mongoose.Types.ObjectId.isValid(identifier)) {
+    query = Signature.findById(identifier);
+
+    if (populate) {
+      query = query.populate(populate);
+    }
+
+    record = await query;
+  }
+
+  return record;
+}
 
 export function signatureRoutes(app, authMiddleware) {
   // Save signature position
@@ -136,7 +241,11 @@ export function signatureRoutes(app, authMiddleware) {
           });
         }
 
-        const signatures = await Signature.find({ document: documentId });
+        const signatures = await Signature.find({ document: documentId }).sort({
+          page: 1,
+          createdAt: 1,
+          _id: 1,
+        });
 
         const normalizedPath = String(document.filePath || "").replace(/\\/g, "/");
         const docPathCandidates = path.isAbsolute(normalizedPath)
@@ -153,19 +262,39 @@ export function signatureRoutes(app, authMiddleware) {
 
         const pdfBytes = fs.readFileSync(sourcePath);
         const pdfDoc = await PDFDocument.load(pdfBytes);
+        const signatureFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
         const pages = pdfDoc.getPages();
+        const signatureClusterCounts = new Map();
 
         for (const sig of signatures) {
           const page = pages[sig.page - 1];
           if (!page) continue; // Skip if page number is invalid
 
           const signedText = sig.signature || sig.signatureDetails?.signerName || "Signed";
+          const clusterKey = getSignatureClusterKey(sig);
+          const stackIndex = signatureClusterCounts.get(clusterKey) || 0;
+          signatureClusterCounts.set(clusterKey, stackIndex + 1);
+          const placement = getSignaturePlacement(sig, stackIndex, page);
+          const fontSize = clamp(placement.boxHeight * 0.45, 12, 24);
+          const textWidth = signatureFont.widthOfTextAtSize(signedText, fontSize);
+          const textHeight = signatureFont.heightAtSize(fontSize);
+          const textX = clamp(
+            placement.centerX - textWidth / 2,
+            0,
+            page.getWidth() - textWidth,
+          );
+          const textY = clamp(
+            placement.boxBottom + (placement.boxHeight - textHeight) / 2,
+            0,
+            page.getHeight() - textHeight,
+          );
 
           page.drawText(signedText, {
-            x: sig.coordinates.x,
-            y: sig.coordinates.y,
-            size: 24,
+            x: textX,
+            y: textY,
+            size: fontSize,
+            font: signatureFont,
             color: rgb(0, 0, 0),
           });
         }
@@ -231,7 +360,7 @@ export function signatureRoutes(app, authMiddleware) {
 
       auditLogger("invite_signature", req.user, documentId, req);
 
-      const signatureLink = `${process.env.FRONTEND_URL}/sign/${record._id}`;
+      const signatureLink = buildPublicSignatureLink(record.publicSignerToken);
       
       // Send invitation email
       try {
@@ -312,7 +441,7 @@ export function signatureRoutes(app, authMiddleware) {
 
         // Send invitation email
         try {
-          const signatureLink = `${process.env.FRONTEND_URL}/sign/${record._id}`;
+          const signatureLink = buildPublicSignatureLink(record.publicSignerToken);
           await sendEmail(
             email,
             "Document Signature Request",
@@ -339,24 +468,104 @@ export function signatureRoutes(app, authMiddleware) {
   });
 
 //   public signing not authhenticated signing using the link sent to email
-  app.post("/api/signatures/public-sign/:token", async (req, res) => {
-    const { signature } = req.body;
+  app.get("/api/signatures/public-sign/:token", async (req, res, next) => {
+    try {
+      const record = await findSignatureInvite(
+        req.params.token,
+        "document title status",
+      );
 
-    const record = await Signature.findOne({ publicSignerToken: req.params.token });
+      if (!record) {
+        return res.status(404).json({ message: "Invitation not found" });
+      }
 
-    if (!record) {
-      return res.status(404).json({ message: "Invitation not found" });
+      if (record.expiresAt && record.expiresAt < new Date()) {
+        return res.status(410).json({ message: "Invitation has expired" });
+      }
+
+      return res.status(200).json({
+        _id: record._id,
+        email: record.email,
+        status: record.status,
+        page: record.page,
+        coordinates: record.coordinates,
+        signature: record.signature,
+        signatureDetails: record.signatureDetails || {},
+        expiresAt: record.expiresAt,
+        document: record.document,
+      });
+    } catch (error) {
+      next(error);
     }
+  });
 
-    if (record.status === "signed") {
-      return res.status(400).json({ message: "Already signed" });
+  app.get(
+    "/api/signatures/public-sign/:token/document",
+    async (req, res, next) => {
+      try {
+        const record = await findSignatureInvite(
+          req.params.token,
+          "document title filePath status",
+        );
+
+        if (!record || !record.document) {
+          return res.status(404).json({ message: "Invitation not found" });
+        }
+
+        if (record.expiresAt && record.expiresAt < new Date()) {
+          return res.status(410).json({ message: "Invitation has expired" });
+        }
+
+        const sourcePath = resolveStoredFilePath(record.document.filePath);
+
+        if (!sourcePath) {
+          return res.status(404).json({ message: "Document file not found" });
+        }
+
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", "inline");
+
+        return res.sendFile(sourcePath, (err) => {
+          if (err) {
+            next(err);
+          }
+        });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  app.post("/api/signatures/public-sign/:token", async (req, res, next) => {
+    try {
+      const trimmedSignature = String(req.body?.signature || "").trim();
+
+      if (!trimmedSignature) {
+        return res.status(400).json({ message: "Signature text is required" });
+      }
+
+      const record = await findSignatureInvite(req.params.token);
+
+      if (!record) {
+        return res.status(404).json({ message: "Invitation not found" });
+      }
+
+      if (record.expiresAt && record.expiresAt < new Date()) {
+        return res.status(410).json({ message: "Invitation has expired" });
+      }
+
+      if (record.status === "signed") {
+        return res.status(400).json({ message: "Already signed" });
+      }
+
+      record.signature = trimmedSignature;
+      record.status = "signed";
+
+      await record.save();
+
+      res.json({ message: "Document signed successfully" });
+    } catch (error) {
+      next(error);
     }
-
-    record.signature = signature;
-    record.status = "signed";
-
-    await record.save();
-
-    res.json({ message: "Document signed successfully" });
   });
 }

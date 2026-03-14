@@ -115,14 +115,14 @@ signatureSchema.index(
 );
 
 // Automatically set signedAt when status changes to "signed"
-signatureSchema.pre("save", function (next) {
+signatureSchema.pre("save", function () {
   if (this.status === "signed" && !this.signatureDetails?.signedAt) {
     this.signatureDetails = {
       ...(this.signatureDetails || {}),
       signedAt: new Date(),
     };
   }
-  next();
+ 
 });
 
 const Signature = mongoose.model("Signature", signatureSchema);

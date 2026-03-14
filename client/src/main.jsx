@@ -9,6 +9,7 @@ import Login from './pages/Login.jsx'
 import Register from './pages/Register.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
 import DocumentViewer from './pages/DocumentViewer.jsx'
+import PublicSign from './pages/PublicSign.jsx'
 
 const router = createBrowserRouter([
   {
@@ -25,7 +26,7 @@ const router = createBrowserRouter([
         element: <ProtectedRoute><Dashboard /></ProtectedRoute>
       },
       {
-        path: "/docs/:id",
+        path: "/docs/:publicDocToken",
         element: <ProtectedRoute><DocumentViewer /></ProtectedRoute>
       },
       {
@@ -35,6 +36,10 @@ const router = createBrowserRouter([
       {
         path: "/register",
         element: <Register />
+      },
+      {
+        path: "/signatures/public-sign/:token",
+        element: <PublicSign />
       }
     ]
   },

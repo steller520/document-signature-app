@@ -47,28 +47,13 @@ export function documentRoutes(app, authMiddleware) {
     }
   });
 
-  //   View specific PDF
-  app.get("/api/docs/view/:token", authMiddleware, async (req, res, next) => {
-    try {
-      const document = await Document.findOne({
-        publicToken: req.params.token,
-        uploadedBy: req.user,
-      });
-      if (!document) {
-        return res.status(404).json({ message: "Document not found" });
-      }
 
-      res.status(200).json(document);
-    } catch (error) {
-      next(error);
-    }
-  });
 
   // Stream PDF bytes for in-app viewing.
-  app.get("/api/docs/:token/file", authMiddleware, async (req, res, next) => {
+  app.get("/api/docs/:token", authMiddleware, async (req, res, next) => {
     try {
       const document = await Document.findOne({
-        publicToken: req.params.token,
+        publicDocToken: req.params.token,
         uploadedBy: req.user,
       });
 
@@ -102,4 +87,21 @@ export function documentRoutes(app, authMiddleware) {
       next(error);
     }
   });
+
+  // Public endpoint to view document details without authentication (for signature flow)
+  app.get("/api/docs/view/:token",  async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    const document = await Document.findOne({ publicDocToken: token });
+
+    if (!document) {
+      return res.status(404).json({ message: "Document not found" });
+    }
+
+    res.json(document);
+  } catch (error) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
 }
