@@ -12,6 +12,34 @@ const DEFAULT_SIGNATURE_WIDTH = 0.2;
 const DEFAULT_SIGNATURE_HEIGHT = 0.08;
 const SIGNATURE_STACK_GAP = 0.015;
 
+const ALLOWED_STANDARD_FONTS = new Set([
+  StandardFonts.Helvetica,
+  StandardFonts.HelveticaOblique,
+  StandardFonts.TimesRoman,
+  StandardFonts.TimesRomanItalic,
+  StandardFonts.Courier,
+  StandardFonts.CourierOblique,
+]);
+
+const FONT_ALIASES = new Map([
+  ["Helvetica", StandardFonts.Helvetica],
+  ["HelveticaOblique", StandardFonts.HelveticaOblique],
+  ["Helvetica-Oblique", StandardFonts.HelveticaOblique],
+  ["TimesRoman", StandardFonts.TimesRoman],
+  ["Times-Roman", StandardFonts.TimesRoman],
+  ["TimesRomanItalic", StandardFonts.TimesRomanItalic],
+  ["Times-Italic", StandardFonts.TimesRomanItalic],
+  ["Courier", StandardFonts.Courier],
+  ["CourierOblique", StandardFonts.CourierOblique],
+  ["Courier-Oblique", StandardFonts.CourierOblique],
+]);
+
+function getSafeStandardFontName(fontFamily) {
+  const normalized = String(fontFamily || "").trim();
+  const mapped = FONT_ALIASES.get(normalized) || normalized;
+  return ALLOWED_STANDARD_FONTS.has(mapped) ? mapped : StandardFonts.Helvetica;
+}
+
 function buildPublicSignatureLink(token) {
   return `${process.env.FRONTEND_URL}/signatures/public-sign/${token}`;
 }
@@ -86,6 +114,7 @@ function getSignaturePlacement(signature, stackIndex, page) {
   return {
     boxBottom,
     boxHeight,
+    boxWidth,
     centerX,
   };
 }
@@ -204,6 +233,80 @@ export function signatureRoutes(app, authMiddleware) {
     }
   });
 
+  app.patch(
+    "/api/signatures/:signatureId/coordinates",
+    authMiddleware,
+    async (req, res, next) => {
+      try {
+        const { signatureId } = req.params;
+        const { documentId, page, coordinates } = req.body;
+
+        const record = await Signature.findById(signatureId);
+
+        if (!record) {
+          return res.status(404).json({ message: "Signature record not found" });
+        }
+
+        const document = await Document.findById(record.document);
+
+        if (!document) {
+          return res.status(404).json({ message: "Document not found" });
+        }
+
+        if (document.status === "signed") {
+          return res.status(400).json({
+            message: "Cannot move signatures after finalization",
+          });
+        }
+
+        const isOwner = document.uploadedBy?.toString() === req.user.toString();
+        const isOwnSignature =
+          record.signedBy && record.signedBy.toString() === req.user.toString();
+
+        if (!isOwner && !isOwnSignature) {
+          return res.status(403).json({
+            message: "You are not allowed to move this signature",
+          });
+        }
+
+        if (documentId && String(documentId) !== String(record.document)) {
+          return res.status(400).json({ message: "Document mismatch" });
+        }
+
+        const nextWidth = clamp(
+          Number(coordinates?.width || DEFAULT_SIGNATURE_WIDTH),
+          0.08,
+          0.6,
+        );
+        const nextHeight = clamp(
+          Number(coordinates?.height || DEFAULT_SIGNATURE_HEIGHT),
+          0.04,
+          0.2,
+        );
+        const minCenterX = nextWidth / 2;
+        const maxCenterX = 1 - nextWidth / 2;
+        const minCenterY = nextHeight / 2;
+        const maxCenterY = 1 - nextHeight / 2;
+
+        record.page = Math.max(1, Number(page || record.page || 1));
+        record.coordinates = {
+          x: clamp(Number(coordinates?.x || 0), minCenterX, maxCenterX),
+          y: clamp(Number(coordinates?.y || 0), minCenterY, maxCenterY),
+          width: nextWidth,
+          height: nextHeight,
+        };
+
+        await record.save();
+
+        auditLogger("move_signature", req.user, record.document, req);
+
+        return res.status(200).json(record);
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
   //   finalize the signature by updating the document with the signature and coordinates and page number and status of the signature (signed, pending, rejected) to the document and update the document status if all signatures are signed
   app.post(
     "/api/signatures/finalize",
@@ -262,7 +365,7 @@ export function signatureRoutes(app, authMiddleware) {
 
         const pdfBytes = fs.readFileSync(sourcePath);
         const pdfDoc = await PDFDocument.load(pdfBytes);
-        const signatureFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+        const embeddedFonts = new Map();
 
         const pages = pdfDoc.getPages();
         const signatureClusterCounts = new Map();
@@ -276,8 +379,28 @@ export function signatureRoutes(app, authMiddleware) {
           const stackIndex = signatureClusterCounts.get(clusterKey) || 0;
           signatureClusterCounts.set(clusterKey, stackIndex + 1);
           const placement = getSignaturePlacement(sig, stackIndex, page);
-          const fontSize = clamp(placement.boxHeight * 0.45, 12, 24);
-          const textWidth = signatureFont.widthOfTextAtSize(signedText, fontSize);
+          const fontName = getSafeStandardFontName(sig.signatureDetails?.fontFamily);
+          let signatureFont = embeddedFonts.get(fontName);
+
+          if (!signatureFont) {
+            signatureFont = await pdfDoc.embedFont(fontName);
+            embeddedFonts.set(fontName, signatureFont);
+          }
+
+          const requestedFontSize = Number(sig.signatureDetails?.fontSize);
+          let fontSize = Number.isFinite(requestedFontSize)
+            ? clamp(requestedFontSize, 8, 72)
+            : clamp(placement.boxHeight * 0.45, 12, 24);
+
+          let textWidth = signatureFont.widthOfTextAtSize(signedText, fontSize);
+          const maxTextWidth = placement.boxWidth * 0.95;
+
+          if (maxTextWidth > 0 && textWidth > maxTextWidth) {
+            const scale = maxTextWidth / textWidth;
+            fontSize = clamp(fontSize * scale, 8, 72);
+            textWidth = signatureFont.widthOfTextAtSize(signedText, fontSize);
+          }
+
           const textHeight = signatureFont.heightAtSize(fontSize);
           const textX = clamp(
             placement.centerX - textWidth / 2,

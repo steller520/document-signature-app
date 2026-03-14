@@ -43,6 +43,28 @@ const signatureSchema = new mongoose.Schema(
         type: String,
         trim: true,
       },
+      fontFamily: {
+        type: String,
+        enum: [
+          "Helvetica",
+          "HelveticaOblique",
+          "Helvetica-Oblique",
+          "TimesRoman",
+          "TimesRomanItalic",
+          "Times-Roman",
+          "Times-Italic",
+          "Courier",
+          "CourierOblique",
+          "Courier-Oblique",
+        ],
+        default: "Helvetica",
+      },
+      fontSize: {
+        type: Number,
+        min: 8,
+        max: 72,
+        default: 24,
+      },
       signedAt: {
         type: Date,
       },
