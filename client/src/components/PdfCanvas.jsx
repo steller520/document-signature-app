@@ -179,6 +179,23 @@ function getClientCoordinates(operation, nativeEvent) {
   return null;
 }
 
+function getElementCenterCoordinates(element) {
+  if (!element?.getBoundingClientRect) {
+    return null;
+  }
+
+  const rect = element.getBoundingClientRect();
+
+  if (!rect.width || !rect.height) {
+    return null;
+  }
+
+  return {
+    x: rect.left + rect.width / 2,
+    y: rect.top + rect.height / 2,
+  };
+}
+
 function SignatureMarker({
   signature,
   canDragMarkers,
@@ -187,6 +204,8 @@ function SignatureMarker({
   coordinates,
 }) {
   const isSigned = signature.status === "signed";
+  const hasMeasuredPage =
+    Number(pageDimensions?.width) > 0 && Number(pageDimensions?.height) > 0;
   const markerLabel = getSignatureLabel(signature);
   const markerToneClass =
     isSigned
@@ -236,14 +255,22 @@ function SignatureMarker({
       title={canDragMarkers ? "Drag to reposition signature" : "Signature position"}
       className={`absolute -translate-x-1/2 -translate-y-1/2 overflow-visible rounded-xl border select-none backdrop-blur-[2px] ${markerToneClass} ${canDragMarkers ? "cursor-grab active:cursor-grabbing transition-[box-shadow,border-color,background-color,opacity] duration-150 hover:shadow-lg" : "cursor-default"} ${isDragging ? "z-20 opacity-70" : "z-10 opacity-100"}`}
       style={{
-        left: `${coordinates.x * 100}%`,
-        top: `${coordinates.y * 100}%`,
-        width: isDragging ? `${markerPixelWidth}px` : `${coordinates.width * 100}%`,
-        height: isDragging ? `${markerPixelHeight}px` : `${coordinates.height * 100}%`,
-        minWidth: isDragging ? `${markerPixelWidth}px` : undefined,
-        maxWidth: isDragging ? `${markerPixelWidth}px` : undefined,
-        minHeight: isDragging ? `${markerPixelHeight}px` : undefined,
-        maxHeight: isDragging ? `${markerPixelHeight}px` : undefined,
+        left: hasMeasuredPage
+          ? `${coordinates.x * Number(pageDimensions.width)}px`
+          : `${coordinates.x * 100}%`,
+        top: hasMeasuredPage
+          ? `${coordinates.y * Number(pageDimensions.height)}px`
+          : `${coordinates.y * 100}%`,
+        width: hasMeasuredPage
+          ? `${markerPixelWidth}px`
+          : `${coordinates.width * 100}%`,
+        height: hasMeasuredPage
+          ? `${markerPixelHeight}px`
+          : `${coordinates.height * 100}%`,
+        minWidth: hasMeasuredPage ? `${markerPixelWidth}px` : undefined,
+        maxWidth: hasMeasuredPage ? `${markerPixelWidth}px` : undefined,
+        minHeight: hasMeasuredPage ? `${markerPixelHeight}px` : undefined,
+        maxHeight: hasMeasuredPage ? `${markerPixelHeight}px` : undefined,
         touchAction: canDragMarkers ? "none" : "auto",
         willChange: canDragMarkers ? "transform" : "auto",
         boxSizing: "border-box",
@@ -366,6 +393,7 @@ function PdfCanvas({
 }) {
   const containerRef = useRef(null);
   const suppressClickUntilRef = useRef(0);
+  const dragSessionRef = useRef(null);
   const [availableWidth, setAvailableWidth] = useState(0);
   const [renderError, setRenderError] = useState("");
   const [zoom, setZoom] = useState(1);
@@ -447,9 +475,27 @@ function PdfCanvas({
 
   const handleDragStart = (event) => {
     const signatureId = event?.operation?.source?.data?.signatureId;
+    const sourceElement = event?.operation?.source?.element;
+    const pointerCoordinates = getClientCoordinates(
+      event?.operation,
+      event?.nativeEvent,
+    );
+    const sourceRect = sourceElement?.getBoundingClientRect?.();
+
+    dragSessionRef.current = null;
 
     if (!signatureId) {
       return;
+    }
+
+    if (pointerCoordinates && sourceRect?.width && sourceRect?.height) {
+      dragSessionRef.current = {
+        signatureId,
+        pointerOffsetX: pointerCoordinates.x - sourceRect.left,
+        pointerOffsetY: pointerCoordinates.y - sourceRect.top,
+        markerWidth: sourceRect.width,
+        markerHeight: sourceRect.height,
+      };
     }
 
     suppressPageClick(400);
@@ -457,6 +503,9 @@ function PdfCanvas({
 
   const handleDragEnd = (event) => {
     suppressPageClick(350);
+
+    const dragSession = dragSessionRef.current;
+    dragSessionRef.current = null;
 
     if (event?.canceled || !canDragMarkers) {
       return;
@@ -482,12 +531,30 @@ function PdfCanvas({
       return;
     }
 
-    const clientCoordinates = getClientCoordinates(
+    const pointerCoordinates = getClientCoordinates(
       event.operation,
       event.nativeEvent,
     );
+    const sourceElement = event?.operation?.source?.element;
+    let dropCenterCoordinates = getElementCenterCoordinates(sourceElement);
 
-    if (!clientCoordinates) {
+    if (
+      pointerCoordinates &&
+      dragSession?.signatureId === signatureId &&
+      Number.isFinite(dragSession.pointerOffsetX) &&
+      Number.isFinite(dragSession.pointerOffsetY) &&
+      Number.isFinite(dragSession.markerWidth) &&
+      Number.isFinite(dragSession.markerHeight)
+    ) {
+      dropCenterCoordinates = {
+        x:
+          pointerCoordinates.x - dragSession.pointerOffsetX + dragSession.markerWidth / 2,
+        y:
+          pointerCoordinates.y - dragSession.pointerOffsetY + dragSession.markerHeight / 2,
+      };
+    }
+
+    if (!dropCenterCoordinates) {
       return;
     }
 
@@ -497,12 +564,12 @@ function PdfCanvas({
     const minCenterY = normalized.height / 2;
     const maxCenterY = 1 - normalized.height / 2;
     const centerX = clamp(
-      (clientCoordinates.x - rect.left) / rect.width,
+      (dropCenterCoordinates.x - rect.left) / rect.width,
       minCenterX,
       maxCenterX,
     );
     const centerY = clamp(
-      (clientCoordinates.y - rect.top) / rect.height,
+      (dropCenterCoordinates.y - rect.top) / rect.height,
       minCenterY,
       maxCenterY,
     );

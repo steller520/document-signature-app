@@ -30,6 +30,28 @@ function getDownloadFilename(title, isFinalized) {
   return isFinalized ? `${baseTitle}-signed.pdf` : `${baseTitle}.pdf`;
 }
 
+function getFilenameFromDisposition(dispositionHeader) {
+  if (!dispositionHeader) {
+    return null;
+  }
+
+  const utf8Match = dispositionHeader.match(/filename\*=UTF-8''([^;]+)/i);
+
+  if (utf8Match?.[1]) {
+    return decodeURIComponent(utf8Match[1]);
+  }
+
+  const quotedMatch = dispositionHeader.match(/filename="([^"]+)"/i);
+
+  if (quotedMatch?.[1]) {
+    return quotedMatch[1];
+  }
+
+  const plainMatch = dispositionHeader.match(/filename=([^;]+)/i);
+
+  return plainMatch?.[1]?.trim() || null;
+}
+
 function DocumentViewer() {
   const { publicDocToken } = useParams();
   const [pdfUrl, setPdfUrl] = useState(null);
@@ -403,21 +425,26 @@ function DocumentViewer() {
       setStatusMessage("");
       setStatusTone("info");
 
-      const { data } = await API.get(`/docs/${publicDocToken}`, {
+      const response = await API.get(`/docs/${publicDocToken}/download`, {
         responseType: "blob",
       });
-      const blob = data instanceof Blob ? data : new Blob([data], {
+      const blob = response.data instanceof Blob ? response.data : new Blob([response.data], {
         type: "application/pdf",
       });
       const downloadUrl = URL.createObjectURL(blob);
+      const dispositionHeader = response.headers?.["content-disposition"];
       const anchor = document.createElement("a");
 
       anchor.href = downloadUrl;
-      anchor.download = getDownloadFilename(documentInfo?.title, true);
+      anchor.download =
+        getFilenameFromDisposition(dispositionHeader) ||
+        getDownloadFilename(documentInfo?.title, true);
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
-      URL.revokeObjectURL(downloadUrl);
+      window.setTimeout(() => {
+        URL.revokeObjectURL(downloadUrl);
+      }, 1000);
 
       setStatusMessage("Signed PDF download started.");
       setStatusTone("success");

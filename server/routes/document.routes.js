@@ -8,6 +8,27 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const serverRootDir = path.resolve(__dirname, "..");
 
+function resolveDocumentAbsolutePath(filePath) {
+  const normalizedPath = String(filePath || "").replace(/\\/g, "/");
+  const candidatePaths = path.isAbsolute(normalizedPath)
+    ? [normalizedPath]
+    : [
+        path.resolve(serverRootDir, normalizedPath),
+        path.resolve(process.cwd(), normalizedPath),
+      ];
+
+  return candidatePaths.find((candidate) => fs.existsSync(candidate));
+}
+
+function getDownloadFilename(document) {
+  const normalizedTitle = String(document?.title || "document").trim() || "document";
+  const currentExtension = path.extname(normalizedTitle);
+  const baseName = path.basename(normalizedTitle, currentExtension) || "document";
+  const suffix = document?.status === "signed" ? "-signed" : "";
+
+  return `${baseName}${suffix}.pdf`;
+}
+
 export function documentRoutes(app, authMiddleware) {
   app.post(
     "/api/docs/upload",
@@ -47,6 +68,35 @@ export function documentRoutes(app, authMiddleware) {
     }
   });
 
+  app.get("/api/docs/:token/download", authMiddleware, async (req, res, next) => {
+    try {
+      const document = await Document.findOne({
+        publicDocToken: req.params.token,
+        uploadedBy: req.user,
+      });
+
+      if (!document) {
+        return res.status(404).json({ message: "Document not found" });
+      }
+
+      const absolutePath = resolveDocumentAbsolutePath(document.filePath);
+
+      if (!absolutePath) {
+        return res.status(404).json({ message: "Document file not found" });
+      }
+
+      res.setHeader("Content-Type", "application/pdf");
+
+      return res.download(absolutePath, getDownloadFilename(document), (err) => {
+        if (err) {
+          next(err);
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
 
 
   // Stream PDF bytes for in-app viewing.
@@ -61,16 +111,7 @@ export function documentRoutes(app, authMiddleware) {
         return res.status(404).json({ message: "Document not found" });
       }
 
-      const normalizedPath = String(document.filePath || "").replace(/\\/g, "/");
-      const candidatePaths = path.isAbsolute(normalizedPath)
-        ? [normalizedPath]
-        : [
-            path.resolve(serverRootDir, normalizedPath),
-            path.resolve(process.cwd(), normalizedPath),
-          ];
-      const absolutePath = candidatePaths.find((candidate) =>
-        fs.existsSync(candidate),
-      );
+      const absolutePath = resolveDocumentAbsolutePath(document.filePath);
 
       if (!absolutePath) {
         return res.status(404).json({ message: "Document file not found" });
