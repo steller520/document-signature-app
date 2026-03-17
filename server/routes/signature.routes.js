@@ -45,7 +45,12 @@ function buildPublicSignatureLink(token) {
 }
 
 function resolveStoredFilePath(filePath) {
-  const normalizedPath = String(filePath || "").replace(/\\/g, "/");
+  const normalizedPath = String(filePath || "").replace(/\\/g, "/").trim();
+
+  if (!normalizedPath) {
+    return null;
+  }
+
   const candidatePaths = path.isAbsolute(normalizedPath)
     ? [normalizedPath]
     : [
@@ -53,7 +58,13 @@ function resolveStoredFilePath(filePath) {
         path.resolve(process.cwd(), "server", normalizedPath),
       ];
 
-  return candidatePaths.find((candidate) => fs.existsSync(candidate));
+  return candidatePaths.find((candidate) => {
+    try {
+      return fs.existsSync(candidate) && fs.statSync(candidate).isFile();
+    } catch {
+      return false;
+    }
+  });
 }
 
 function clamp(value, min, max) {
@@ -123,7 +134,12 @@ async function findSignatureInvite(identifier, populate) {
   let query = Signature.findOne({ publicSignerToken: identifier });
 
   if (populate) {
-    query = query.populate(populate);
+    query = Array.isArray(populate)
+      ? populate.reduce(
+          (currentQuery, populateOption) => currentQuery.populate(populateOption),
+          query,
+        )
+      : query.populate(populate);
   }
 
   let record = await query;
@@ -132,7 +148,12 @@ async function findSignatureInvite(identifier, populate) {
     query = Signature.findById(identifier);
 
     if (populate) {
-      query = query.populate(populate);
+      query = Array.isArray(populate)
+        ? populate.reduce(
+            (currentQuery, populateOption) => currentQuery.populate(populateOption),
+            query,
+          )
+        : query.populate(populate);
     }
 
     record = await query;
@@ -599,7 +620,7 @@ export function signatureRoutes(app, authMiddleware) {
     try {
       const record = await findSignatureInvite(
         req.params.token,
-        "document title status",
+        { path: "document", select: "title status" },
       );
 
       if (!record) {
@@ -632,7 +653,7 @@ export function signatureRoutes(app, authMiddleware) {
       try {
         const record = await findSignatureInvite(
           req.params.token,
-          "document title filePath status",
+          { path: "document", select: "title filePath status" },
         );
 
         if (!record || !record.document) {
@@ -641,6 +662,10 @@ export function signatureRoutes(app, authMiddleware) {
 
         if (record.expiresAt && record.expiresAt < new Date()) {
           return res.status(410).json({ message: "Invitation has expired" });
+        }
+
+        if (!record.document.filePath) {
+          return res.status(404).json({ message: "Document file not found" });
         }
 
         const sourcePath = resolveStoredFilePath(record.document.filePath);

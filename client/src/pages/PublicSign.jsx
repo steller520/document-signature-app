@@ -17,6 +17,8 @@ const SIGNATURE_FONT_OPTIONS = [
   { value: "Courier-Oblique", label: "Courier Oblique" },
 ];
 
+let textMeasureCanvas;
+
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
@@ -52,6 +54,58 @@ function getFontPreviewStyle(fontFamily) {
   return normalized.includes("italic") || normalized.includes("oblique")
     ? "italic"
     : "normal";
+}
+
+function getSharedMeasurementCanvas() {
+  if (typeof document === "undefined") {
+    return null;
+  }
+
+  if (!textMeasureCanvas) {
+    textMeasureCanvas = document.createElement("canvas");
+  }
+
+  return textMeasureCanvas;
+}
+
+function getPreviewMarkerFontSize({
+  label,
+  fontFamily,
+  fontSize,
+  coordinates,
+  pageMetrics,
+  fallbackPageWidth,
+}) {
+  const trimmedLabel = String(label || "").trim();
+
+  if (!trimmedLabel) {
+    return 12;
+  }
+
+  const renderedPageWidth = Number(pageMetrics?.width || fallbackPageWidth || 0);
+  const originalPageWidth = Number(pageMetrics?.originalWidth || 0);
+  const zoomScale =
+    renderedPageWidth > 0 && originalPageWidth > 0
+      ? renderedPageWidth / originalPageWidth
+      : 1;
+  let resolvedFontSize = normalizeFontSize(fontSize) * zoomScale;
+  const canvas = getSharedMeasurementCanvas();
+  const context = canvas?.getContext("2d");
+  const maxTextWidth = Math.max(renderedPageWidth * coordinates.width * 0.92, 24);
+
+  if (!context || !renderedPageWidth) {
+    return Math.max(resolvedFontSize, 8);
+  }
+
+  context.font = `${getFontPreviewStyle(fontFamily)} ${resolvedFontSize}px ${getFontPreviewFamily(fontFamily)}`;
+
+  const measuredTextWidth = context.measureText(trimmedLabel).width;
+
+  if (measuredTextWidth > maxTextWidth) {
+    resolvedFontSize = resolvedFontSize * (maxTextWidth / measuredTextWidth);
+  }
+
+  return Math.max(resolvedFontSize, 8);
 }
 
 function getNormalizedCoordinates(record) {
@@ -100,6 +154,7 @@ function PublicSign() {
   const [zoom, setZoom] = useState(1);
   const [previewWidth, setPreviewWidth] = useState(0);
   const [renderError, setRenderError] = useState("");
+  const [pageMetricsByNumber, setPageMetricsByNumber] = useState({});
 
   useEffect(() => {
     if (!previewContainerRef.current) {
@@ -254,6 +309,44 @@ function PublicSign() {
   const previewFontSize = invite?.status === "signed"
     ? normalizeFontSize(invite?.signatureDetails?.fontSize || signatureFontSize)
     : normalizeFontSize(signatureFontSize);
+  const invitePageNumber = Number(invite?.page || 1);
+  const invitePageMetrics = pageMetricsByNumber[invitePageNumber];
+  const previewMarkerFontSize = getPreviewMarkerFontSize({
+    label: previewSignatureLabel,
+    fontFamily: previewFontFamily,
+    fontSize: previewFontSize,
+    coordinates: markerCoordinates,
+    pageMetrics: invitePageMetrics,
+    fallbackPageWidth: pageWidth,
+  });
+
+  const handlePageRenderSuccess = (pageNumber, page) => {
+    const nextMetrics = {
+      width: Number(page?.width || 0),
+      height: Number(page?.height || 0),
+      originalWidth: Number(page?.originalWidth || 0),
+      originalHeight: Number(page?.originalHeight || 0),
+    };
+
+    setPageMetricsByNumber((currentMetrics) => {
+      const previousMetrics = currentMetrics[pageNumber];
+
+      if (
+        previousMetrics &&
+        previousMetrics.width === nextMetrics.width &&
+        previousMetrics.height === nextMetrics.height &&
+        previousMetrics.originalWidth === nextMetrics.originalWidth &&
+        previousMetrics.originalHeight === nextMetrics.originalHeight
+      ) {
+        return currentMetrics;
+      }
+
+      return {
+        ...currentMetrics,
+        [pageNumber]: nextMetrics,
+      };
+    });
+  };
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6 p-6 md:p-10">
@@ -374,26 +467,38 @@ function PublicSign() {
                         key={pageNumber}
                         className="relative mx-auto w-fit rounded-xl border border-slate-200 bg-slate-50 p-2"
                       >
-                        <Page pageNumber={pageNumber} width={pageWidth} />
+                        <div className="relative inline-block">
+                          <Page
+                            pageNumber={pageNumber}
+                            width={pageWidth}
+                            onRenderSuccess={(page) => handlePageRenderSuccess(pageNumber, page)}
+                          />
 
-                        {isSignaturePage && invite?.coordinates && (
-                          <div
-                            className={`pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-lg border px-2 py-1 shadow-sm ${markerToneClass}`}
-                            style={{
-                              left: `${markerCoordinates.x * 100}%`,
-                              top: `${markerCoordinates.y * 100}%`,
-                              width: `${markerCoordinates.width * 100}%`,
-                              minHeight: `${markerCoordinates.height * 100}%`,
-                              fontFamily: getFontPreviewFamily(previewFontFamily),
-                              fontStyle: getFontPreviewStyle(previewFontFamily),
-                              fontSize: `${previewFontSize}px`,
-                            }}
-                          >
-                            <div className="truncate text-center font-medium leading-tight">
-                              {previewSignatureLabel}
+                          {isSignaturePage && invite?.coordinates && (
+                            <div
+                              className={`pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-lg border shadow-sm ${markerToneClass}`}
+                              style={{
+                                left: `${markerCoordinates.x * 100}%`,
+                                top: `${markerCoordinates.y * 100}%`,
+                                width: `${markerCoordinates.width * 100}%`,
+                                height: `${markerCoordinates.height * 100}%`,
+                              }}
+                            >
+                              <div className="flex h-full items-center justify-center px-2">
+                                <div
+                                  className="w-full truncate text-center font-medium leading-none"
+                                  style={{
+                                    fontFamily: getFontPreviewFamily(previewFontFamily),
+                                    fontStyle: getFontPreviewStyle(previewFontFamily),
+                                    fontSize: `${previewMarkerFontSize}px`,
+                                  }}
+                                >
+                                  {previewSignatureLabel}
+                                </div>
+                              </div>
                             </div>
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </div>
                     );
                   })}
