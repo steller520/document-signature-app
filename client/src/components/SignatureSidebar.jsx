@@ -51,7 +51,7 @@ function SignatureSidebar({
   return (
     <>
       {isDialogOpen && pendingPlacement && (
-        <aside className="w-95 min-w-[320px] max-w-105 h-full border-l border-gray-200 bg-white flex flex-col p-0 shadow-lg">
+        <aside className="sticky top-4 w-95 min-w-[320px] max-w-105 max-h-[calc(100vh-2rem)] border-l border-gray-200 bg-white flex flex-col p-0 shadow-lg rounded-lg">
           <div className="flex-1 overflow-y-auto px-6 py-8">
             <h2 className="text-2xl font-bold text-gray-900 mb-2">Signature Details</h2>
             <p className="text-xs text-gray-500 mb-4">
@@ -62,7 +62,7 @@ function SignatureSidebar({
 
             <div className="space-y-4">
               <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Signature text</label>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Signature text *</label>
                 <input
                   type="text"
                   value={signatureForm.signature}
@@ -74,55 +74,7 @@ function SignatureSidebar({
                   }
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-blue-200"
                   placeholder="Type your signature"
-                />
-              </div>
-
-              <div className="flex gap-3">
-                <div className="flex-1">
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Signer name</label>
-                  <input
-                    type="text"
-                    value={signatureForm.signerName}
-                    onChange={(event) =>
-                      setSignatureForm((prev) => ({
-                        ...prev,
-                        signerName: event.target.value,
-                      }))
-                    }
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-blue-200"
-                    placeholder="Full name"
-                  />
-                </div>
-                <div className="flex-1">
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Signer title</label>
-                  <input
-                    type="text"
-                    value={signatureForm.signerTitle}
-                    onChange={(event) =>
-                      setSignatureForm((prev) => ({
-                        ...prev,
-                        signerTitle: event.target.value,
-                      }))
-                    }
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-blue-200"
-                    placeholder="Designation"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Reason / note</label>
-                <textarea
-                  value={signatureForm.reason}
-                  onChange={(event) =>
-                    setSignatureForm((prev) => ({
-                      ...prev,
-                      reason: event.target.value,
-                    }))
-                  }
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-blue-200"
-                  rows={3}
-                  placeholder="Optional signing reason"
+                  required
                 />
               </div>
 
@@ -201,37 +153,14 @@ function SignatureSidebar({
               <div className="space-y-3">
                 {invitees.map((invitee, index) => (
                   <div key={`invitee-${index}`} className="rounded-lg border border-gray-200 p-3 bg-gray-50">
-                    <div className="grid gap-3 grid-cols-2">
+                    <div className="flex gap-3 items-center">
                       <input
                         type="email"
                         value={invitee.email}
                         onChange={(event) => updateInvitee(index, "email", event.target.value)}
-                        className="rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-blue-200"
+                        className="flex-1 rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-blue-200"
                         placeholder="Invitee email"
                       />
-                      <input
-                        type="text"
-                        value={invitee.signerName}
-                        onChange={(event) => updateInvitee(index, "signerName", event.target.value)}
-                        className="rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-blue-200"
-                        placeholder="Invitee name"
-                      />
-                      <input
-                        type="text"
-                        value={invitee.signerTitle}
-                        onChange={(event) => updateInvitee(index, "signerTitle", event.target.value)}
-                        className="rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-blue-200"
-                        placeholder="Invitee title"
-                      />
-                      <input
-                        type="text"
-                        value={invitee.reason}
-                        onChange={(event) => updateInvitee(index, "reason", event.target.value)}
-                        className="rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-blue-200"
-                        placeholder="Invitee reason"
-                      />
-                    </div>
-                    <div className="mt-2 text-right">
                       <button
                         type="button"
                         onClick={() => removeInvitee(index)}

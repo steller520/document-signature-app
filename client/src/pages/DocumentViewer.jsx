@@ -14,9 +14,6 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
 
 const EMPTY_INVITEE = {
   email: "",
-  signerName: "",
-  signerTitle: "",
-  reason: "",
 };
 
 const DEFAULT_SIGNATURE_WIDTH = 0.2;
@@ -26,6 +23,13 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
+function getDownloadFilename(title, isFinalized) {
+  const normalizedTitle = String(title || "document").trim() || "document";
+  const baseTitle = normalizedTitle.replace(/\.pdf$/i, "");
+
+  return isFinalized ? `${baseTitle}-signed.pdf` : `${baseTitle}.pdf`;
+}
+
 function DocumentViewer() {
   const { publicDocToken } = useParams();
   const [pdfUrl, setPdfUrl] = useState(null);
@@ -33,6 +37,7 @@ function DocumentViewer() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
   const [statusTone, setStatusTone] = useState("info");
   const [signatures, setSignatures] = useState([]);
@@ -44,9 +49,6 @@ function DocumentViewer() {
   const [pendingPlacement, setPendingPlacement] = useState(null);
   const [signatureForm, setSignatureForm] = useState({
     signature: "",
-    signerName: "",
-    signerTitle: "",
-    reason: "",
     fontFamily: "Helvetica",
     fontSize: 24,
   });
@@ -138,6 +140,8 @@ function DocumentViewer() {
   ).length;
   const hasAnySignatures = signatures.length > 0;
   const isDocumentFinalized = documentInfo?.status === "signed";
+  const canDownloadSignedPdf =
+    Boolean(publicDocToken) && isDocumentFinalized && !loading && !downloading;
 
   const canFinalize =
     Boolean(documentId) &&
@@ -170,9 +174,6 @@ function DocumentViewer() {
     setPendingPlacement({ x, y, page });
     setSignatureForm({
       signature: "",
-      signerName: "",
-      signerTitle: "",
-      reason: "",
       fontFamily: "Helvetica",
       fontSize: 24,
     });
@@ -239,9 +240,6 @@ function DocumentViewer() {
     };
 
     const signatureDetails = {
-      signerName: signatureForm.signerName.trim(),
-      signerTitle: signatureForm.signerTitle.trim(),
-      reason: signatureForm.reason.trim(),
       fontFamily: signatureForm.fontFamily || "Helvetica",
       fontSize: clamp(Number(signatureForm.fontSize || 24), 8, 72),
       signedAt: new Date().toISOString(),
@@ -250,9 +248,6 @@ function DocumentViewer() {
     const cleanedInvitees = invitees
       .map((invitee) => ({
         email: String(invitee.email || "").trim().toLowerCase(),
-        signerName: String(invitee.signerName || "").trim(),
-        signerTitle: String(invitee.signerTitle || "").trim(),
-        reason: String(invitee.reason || "").trim(),
       }))
       .filter((invitee) => invitee.email);
 
@@ -398,6 +393,45 @@ function DocumentViewer() {
     }
   };
 
+  const downloadSignedPdf = async () => {
+    if (!publicDocToken) {
+      return;
+    }
+
+    try {
+      setDownloading(true);
+      setStatusMessage("");
+      setStatusTone("info");
+
+      const { data } = await API.get(`/docs/${publicDocToken}`, {
+        responseType: "blob",
+      });
+      const blob = data instanceof Blob ? data : new Blob([data], {
+        type: "application/pdf",
+      });
+      const downloadUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+
+      anchor.href = downloadUrl;
+      anchor.download = getDownloadFilename(documentInfo?.title, true);
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(downloadUrl);
+
+      setStatusMessage("Signed PDF download started.");
+      setStatusTone("success");
+    } catch (error) {
+      console.error("Failed to download signed PDF:", error);
+      setStatusMessage(
+        error?.response?.data?.message || "Failed to download signed PDF.",
+      );
+      setStatusTone("error");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   const statusBadgeClassName = isDocumentFinalized
     ? "border-emerald-200 bg-emerald-50 text-emerald-700"
     : "border-amber-200 bg-amber-50 text-amber-700";
@@ -450,6 +484,17 @@ function DocumentViewer() {
                   ? "Finalizing..."
                   : "Finalize signed PDF"}
             </button>
+
+            {isDocumentFinalized && (
+              <button
+                type="button"
+                onClick={downloadSignedPdf}
+                disabled={!canDownloadSignedPdf}
+                className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2 font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 lg:w-auto"
+              >
+                {downloading ? "Preparing download..." : "Download signed PDF"}
+              </button>
+            )}
 
             <p className="text-sm text-slate-600 lg:text-right">
               {finalizeHelperMessage}

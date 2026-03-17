@@ -1,23 +1,15 @@
-import { useDraggable } from "@dnd-kit/core";
+import { useDraggable } from "@dnd-kit/react";
 
 export default function SignatureDraggable() {
-  const { attributes, listeners, setNodeRef, transform } = useDraggable({
+  const { ref, isDragging } = useDraggable({
     id: "signature",
+    feedback: "move",
   });
-
-  const style = {
-    transform: transform
-      ? `translate3d(${transform.x}px, ${transform.y}px, 0)`
-      : undefined,
-  };
 
   return (
     <div
-      ref={setNodeRef}
-      style={style}
-      {...listeners}
-      {...attributes}
-      className="cursor-grab px-4 py-2 bg-blue-500 text-white rounded shadow"
+      ref={ref}
+      className={`cursor-grab rounded bg-blue-500 px-4 py-2 text-white shadow ${isDragging ? "opacity-60" : "opacity-100"}`}
     >
       Drag Signature
     </div>

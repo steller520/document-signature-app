@@ -147,6 +147,10 @@ export function signatureRoutes(app, authMiddleware) {
     try {
       const { documentId, signature, signatureDetails, coordinates, page } = req.body;
 
+      if (!signature || !String(signature).trim()) {
+        return res.status(400).json({ message: "Signature text is required" });
+      }
+
       const document = await Document.findById(documentId);
 
       if (!document) {
@@ -168,7 +172,7 @@ export function signatureRoutes(app, authMiddleware) {
         signedBy: req.user,
         document: documentId,
         email: null,
-        signature,
+        signature: String(signature).trim(),
         signatureDetails,
         coordinates,
         page,
@@ -208,6 +212,10 @@ export function signatureRoutes(app, authMiddleware) {
     try {
       const { documentId, signature, signatureDetails } = req.body;
 
+      if (!signature || !String(signature).trim()) {
+        return res.status(400).json({ message: "Signature text is required" });
+      }
+
       const record = await Signature.findOne({
         document: documentId,
         signedBy: req.user,
@@ -216,7 +224,7 @@ export function signatureRoutes(app, authMiddleware) {
         return res.status(404).json({ message: "Signature record not found" });
       }
 
-      record.signature = signature;
+      record.signature = String(signature).trim();
       record.signatureDetails = {
         ...(record.signatureDetails || {}),
         ...(signatureDetails || {}),
@@ -554,11 +562,7 @@ export function signatureRoutes(app, authMiddleware) {
           email,
           coordinates,
           page,
-          signatureDetails: {
-            signerName: invitee?.signerName,
-            signerTitle: invitee?.signerTitle,
-            reason: invitee?.reason,
-          },
+          signatureDetails: {},
           status: "pending",
         });
 
@@ -681,7 +685,20 @@ export function signatureRoutes(app, authMiddleware) {
         return res.status(400).json({ message: "Already signed" });
       }
 
+      const requestedFontFamily = String(
+        req.body?.signatureDetails?.fontFamily || record.signatureDetails?.fontFamily || "Helvetica",
+      ).trim();
+      const requestedFontSize = Number(
+        req.body?.signatureDetails?.fontSize || record.signatureDetails?.fontSize || 24,
+      );
+
       record.signature = trimmedSignature;
+      record.signatureDetails = {
+        ...(record.signatureDetails || {}),
+        fontFamily: getSafeStandardFontName(requestedFontFamily),
+        fontSize: clamp(requestedFontSize, 8, 72),
+        signedAt: new Date(),
+      };
       record.status = "signed";
 
       await record.save();
